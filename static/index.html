@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tag Analysis Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
+            color: white;
+        }
+        .total-questions {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Tag Analysis Dashboard</h1>
+        
+        <div id="loading" class="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Processing data...</p>
+        </div>
+
+        <div id="dashboard" style="display: none;">
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card stats-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Rows Processed</h5>
+                            <h2 id="totalRows" class="card-text">0</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card stats-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Questions by Year</h5>
+                            <div id="yearlyQuestions">
+                                <div class="total-questions">2023: <span id="totalQuestions2023">0</span></div>
+                                <div class="total-questions">2024: <span id="totalQuestions2024">0</span></div>
+                                <div class="total-questions">2025: <span id="totalQuestions2025">0</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card stats-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Top Tags</h5>
+                            <h2 id="topTagsCount" class="card-text">10</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Tag Distribution Over Time</h5>
+                    <div class="chart-container">
+                        <canvas id="tagChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Tag Statistics</h5>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Tag</th>
+                                    <th>Average Percentage</th>
+                                    <th>2023</th>
+                                    <th>2024</th>
+                                    <th>2025</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tagTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tagChart;
+
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+
+                // Update stats
+                document.getElementById('totalRows').textContent = data.total_rows_processed.toLocaleString();
+                document.getElementById('totalQuestions2023').textContent = data.total_questions[2023].toLocaleString();
+                document.getElementById('totalQuestions2024').textContent = data.total_questions[2024].toLocaleString();
+                document.getElementById('totalQuestions2025').textContent = data.total_questions[2025].toLocaleString();
+                document.getElementById('topTagsCount').textContent = data.tags.length;
+
+                // Update chart
+                if (tagChart) {
+                    tagChart.destroy();
+                }
+
+                const ctx = document.getElementById('tagChart').getContext('2d');
+                tagChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.years,
+                        datasets: data.tags.map((tag, index) => ({
+                            label: tag.name,
+                            data: tag.data,
+                            borderWidth: 2,
+                            fill: false,
+                            borderColor: getColor(index),
+                            tension: 0.4
+                        }))
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Percentage'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top'
+                            }
+                        }
+                    }
+                });
+
+                // Update table
+                const tableBody = document.getElementById('tagTableBody');
+                tableBody.innerHTML = data.tags.map(tag => `
+                    <tr>
+                        <td>${tag.name}</td>
+                        <td>${tag.average.toFixed(2)}%</td>
+                        <td>${tag.data[0].toFixed(2)}%</td>
+                        <td>${tag.data[1].toFixed(2)}%</td>
+                        <td>${tag.data[2].toFixed(2)}%</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                document.getElementById('loading').innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        Error loading data: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function getColor(index) {
+            const colors = [
+                '#4285F4', // Blue
+                '#DB4437', // Red
+                '#F4B400', // Yellow
+                '#0F9D58', // Green
+                '#AB47BC', // Purple
+                '#00ACC1', // Cyan
+                '#FF7043', // Deep Orange
+                '#9E9E9E', // Grey
+                '#5C6BC0', // Indigo
+                '#26A69A'  // Teal
+            ];
+            return colors[index % colors.length];
+        }
+
+        // Fetch data when page loads
+        fetchData();
+    </script>
+</body>
+</html> 
